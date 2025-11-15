@@ -36,7 +36,7 @@ def generate_image(description):
         while retry_count < max_retries:
             try:
                 response = client.models.generate_content(
-                    model="gemini-2.0-flash-preview-image-generation",
+                    model="gemini-2.5-flash-image",
                     contents=description,
                     config=types.GenerateContentConfig(response_modalities=['TEXT', 'IMAGE'])
                 )
@@ -87,4 +87,5 @@ if __name__ == "__main__":
     # This block is for local development, Render will use the Gunicorn start command.
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
