@@ -1,0 +1,98 @@
+from flask import Flask, jsonify
+import google.genai as genai
+import os
+from dotenv import load_dotenv
+import re
+import logging
+
+app = Flask(__name__)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+load_dotenv()
+api_key = os.environ.get("GEMINI_API_KEY")
+if not api_key:
+    raise ValueError("GEMINI_API_KEY environment variable not set.")
+
+client = genai.Client(api_key=api_key)
+
+@app.route("/")
+def index():
+    return jsonify({
+        "message": "Welcome to the Kalarava API!",
+        "endpoints": ["/karnataka-facts"]
+    }), 200
+
+@app.route("/karnataka-facts", methods=["GET"])
+def karnataka_facts():
+    try:
+        logger.info("Fetching Karnataka facts...")
+        
+        # --- STEP 1: TEXT GENERATION ---
+        prompt = """
+        Give 3 rare or unknown facts about Karnataka.
+
+        For EACH fact, provide:
+        - English version
+        - Kannada version
+
+        Strict output format:
+
+        Fact 1 English: ...
+        Fact 1 Kannada: ...
+
+        Fact 2 English: ...
+        Fact 2 Kannada: ...
+
+        Fact 3 English: ...
+        Fact 3 Kannada: ...
+        """
+
+        text_result = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt
+        )
+
+        response_text = text_result.text.strip()
+
+        # Parse facts with better error handling
+        english_list = re.findall(r"Fact \d+ English: (.*?)(?=Fact|\Z)", response_text, re.DOTALL)
+        kannada_list = re.findall(r"Fact \d+ Kannada: (.*?)(?=Fact|\Z)", response_text, re.DOTALL)
+
+        # Clean up extra whitespace
+        english_list = [e.strip() for e in english_list]
+        kannada_list = [k.strip() for k in kannada_list]
+
+        # Validate we got 3 facts
+        if len(english_list) < 3 or len(kannada_list) < 3:
+            logger.error("Failed to parse 3 facts")
+            return jsonify({"error": "Failed to parse 3 facts"}), 500
+
+        # --- FINAL RESPONSE ---
+        final_output = []
+        for i in range(3):
+            final_output.append({
+                "english_text": english_list[i],
+                "kannada_text": kannada_list[i]
+            })
+
+        logger.info("Successfully fetched 3 facts")
+        return jsonify({"facts": final_output}), 200
+
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({"error": "Endpoint not found"}), 404
+
+@app.errorhandler(500)
+def server_error(error):
+    return jsonify({"error": "Internal server error"}), 500
+
+if __name__ == "__main__":
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
